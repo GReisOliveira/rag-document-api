@@ -27,6 +27,9 @@ class embeddings:
         client = genai.Client()
 
         for model in client.models.list():
+            
+            print(model.name)
+
             if "embed" in model.name:
                 print(model.name)
 

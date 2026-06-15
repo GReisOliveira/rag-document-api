@@ -1,9 +1,9 @@
-
-import asyncio
 from fastapi import HTTPException
 from langchain_google_genai import GoogleGenerativeAI
 from langchain_chroma.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate
+# from google import genai
+# from google.genai import errors as genai_errors
 
 from app.services.embeddings import embeddings
 from app.utils.logger import setup_logger
@@ -11,10 +11,8 @@ from app.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 class rag_service:
-    @staticmethod
-    async def rag_response(question: str):
-        
-        prompt_template = """
+
+    prompt_template = """
         Você é um assistente de IA especializado em responder perguntas com base em documentos fornecidos.
         Use os seguintes documentos para responder à pergunta:
         {context}
@@ -22,39 +20,66 @@ class rag_service:
         Responda de forma clara e concisa, utilizando as informações dos documentos. 
         Se a resposta não estiver presente nos documentos, diga que não sabe.
         """
+    model = GoogleGenerativeAI(model="gemini-2.5-flash-lite")
+
+    @staticmethod
+    async def retrieve(question: str) -> str:
+
+        if question.strip() == "":
+            raise HTTPException(status_code=400, detail="A pergunta não pode estar vazia.")
+
         try:
-
             emb = embeddings.get_embeddings()
-
-            db = Chroma(persist_directory="data/chroma", embedding_function=emb)
-
+            db = Chroma(persist_directory="data/chroma", collection_name="documents", embedding_function=emb)
             results = db.similarity_search_with_relevance_scores(question, k=3)
 
-            # o results retorna uma tupla (tupla = (documento, score)) ele esta falando que se o score for menor que 0.4 e para encerrar 
-            if not results or results[0][1] < 0.4:
-                logger.error("Desculpe, não tenho informações suficientes para responder a essa pergunta.")
-                raise HTTPException(status_code=404, detail="Desculpe, não tenho informações suficientes para responder a essa pergunta.")  
+            if results:
+                for index, (document, score) in enumerate(results, start=1):
+                    logger.info(f"Resultado {index}: score={score:.4f} | source={document.metadata.get('source')}")
+            # o results retorna uma tupla (tupla = (documento, score)) ele esta falando que se o score for menor que 0.4 e para encerrar
+            best_score = max((score for _, score in results), default=0.0)
 
-            context = []
-            for result in results:
-                context.append(result[0].page_content)
-
+            if not results or best_score < 0.4:
+                raise HTTPException(status_code=404, detail="Desculpe, não tenho informações suficientes.")
             # .join junta todos os textos e separa pelo que eu quiser, nesse caso \n\n---\n\n, ele desfaz a lsita e junta tudo em uma string.
-            context = "\n\n---\n\n".join(context)
+            context = "\n\n---\n\n".join([r[0].page_content for r in results])
+            return context
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao encontrar a informação: {e}")
+    
+    @staticmethod
+    async def rag_response(question: str):
 
-            prompt_model = ChatPromptTemplate.from_template(prompt_template)
+        try:
+            context = await rag_service.retrieve(question)
+
+            prompt_model = ChatPromptTemplate.from_template(rag_service.prompt_template)
             prompt = prompt_model.invoke({"context": context, "question_user": question})
 
-            model = GoogleGenerativeAI(model="gemini-2.0-flash")
-            response = model.invoke(prompt)
+            return rag_service.model.invoke(prompt)
 
-            if asyncio.iscoroutine(response):
-                response = await response
-
-            logger.info(f"✓ Pergunta: {question} - Resposta: {response}")
-
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error(f"✗ Erro no envio do prompt: {e}")
+            logger.error(f"✗ Erro: {e}")
             raise HTTPException(status_code=500, detail="Erro ao processar a pergunta.")
+    
+    @staticmethod
+    async def rag_response_stream(question: str):
         
-        return response
+        try:
+            context = await rag_service.retrieve(question)
+
+            prompt_model = ChatPromptTemplate.from_template(rag_service.prompt_template)
+            prompt = prompt_model.invoke({"context": context, "question_user": question})
+
+            for chunk in rag_service.model.stream(prompt):
+                yield chunk
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"✗ Erro: {e}")
+            raise HTTPException(status_code=500, detail="Erro ao processar a pergunta.")

@@ -5,7 +5,6 @@ from langchain_core.documents import Document
 from app.utils.logger import setup_logger
 
 import csv
-import os
 import pymupdf
 from pathlib import Path
 
@@ -13,6 +12,7 @@ logger = setup_logger(__name__)
 
 class load_doc:
 
+    @staticmethod
     async def saved_files(type_doc: str, docs: UploadFile):
 
         if type_doc == "pdf":
@@ -27,6 +27,9 @@ class load_doc:
         uploads_dir.mkdir(parents=True, exist_ok=True)
         # path(docs.filename).name = pega o nome do arquivo enviado, e junta com o caminho da pasta onde vai ser salvo
         saved_path = uploads_dir / Path(docs.filename).name
+
+        if saved_path.exists():
+            logger.warning(f"Arquivo {saved_path} já existe e será sobrescrito.")
 
         try:
             # open(saved_path, "wb") = abre o arquivo para escrita em modo binário, 

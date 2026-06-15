@@ -1,12 +1,10 @@
 fastapi
 python-multipart
 pymupdf
-langchain
-langchain-community
+langchain-core
+google-genai
 langchain-google-genai
 langchain-text-splitters
 langchain_chroma
 chromadb
-sqlalchemy
-aiosqlite
 python-dotenv

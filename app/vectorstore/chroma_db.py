@@ -4,6 +4,7 @@ import chromadb
 import asyncio
 
 from fastapi import HTTPException, UploadFile
+from langchain_chroma import Chroma
 
 from app.services.load_doc import load_doc
 from app.services.chunk import chunk
@@ -16,7 +17,9 @@ class chroma_db:
     @staticmethod
     async def create_db(docs: UploadFile):
         try:
-            # embeddings = embeddings.get_embeddings()
+            emb = embeddings.get_embeddings()
+
+            db = Chroma(persist_directory="data/chroma", collection_name="documents", embedding_function=emb)
 
             file_type = await load_doc.type_doc(docs)
             docs_tratados = await load_doc.saved_files(file_type, docs)
@@ -55,6 +58,21 @@ class chroma_db:
             # aponta para onde vai ser salvo o banco de dados
             client = chromadb.PersistentClient(path="data/chroma")
             collection = client.get_or_create_collection(name="documents")
+            
+            # pega o source do primeiro doc.csv ou do doc.pdf
+            source = metadatas[0].get("source") if metadatas else None
+
+            if source:
+                # verifica se ja existe dentro do collection um doc com o mesmo nome do source
+                existing = collection.get(where={"source": source})
+                
+                # se tive ele pega o id do doc
+                if existing["ids"]:
+                    logger.warning(
+                        f"Arquivos antigos de source={source} serão sobrescritos: {existing['ids']}"
+                    )
+                    # e deleta o doc antigo do collection usando o id
+                    collection.delete(ids=existing["ids"])
 
             collection.add(
                 documents=texts,

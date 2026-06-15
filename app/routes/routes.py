@@ -1,8 +1,9 @@
+import asyncio
 from fastapi import APIRouter, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.vectorstore.chroma_db import chroma_db
 from app.services.rag_service import rag_service
-from app.services.load_doc import load_doc
 from app.services.embeddings import embeddings
 
 upload_doc = APIRouter(prefix="/upload", tags=["Upload"])
@@ -18,6 +19,16 @@ async def upload(docs: UploadFile):
 async def chat(question: str):
     response = await rag_service.rag_response(question)
     return {"answer": response}
+
+@chat_router.post("/stream")
+async def chat_stream(question: str):
+
+    async def generate():
+        async for chunk in rag_service.rag_response_stream(question):
+            yield chunk
+            await asyncio.sleep(0.3)
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 @models_usualy.get("/")
 async def models():

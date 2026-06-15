@@ -5,7 +5,7 @@ load_dotenv()
 
 app = FastAPI()
 
-from app.api.routes.routes import chat_router, health_router, models_usualy, upload_doc
+from app.routes.routes import chat_router, health_router, models_usualy, upload_doc
 
 app.include_router(upload_doc)
 app.include_router(chat_router)
